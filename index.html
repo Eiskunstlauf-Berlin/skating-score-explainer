@@ -521,84 +521,225 @@ async function parsePDF(file) {
 }
 
 function parseCompetitionText(text) {
-  // Extract competition name and category from top of document
-  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+  // The PDF text is extracted as one long merged string with no newlines.
+  // Format observed: "SCC POKAL 2026JUDGES DETAILS PER SKATERNEULINGE MÄDCHEN FREE SKATINGprinted: ..."
+  // Then per skater: "1 Signe WATZEL Sport Club Charlottenburg e.V. 3 30.57 14.69 15.88 0.00# Executed Elements..."
 
-  // Try to find competition name (usually first meaningful line)
+  // Extract competition name: text before "JUDGES DETAILS"
   let competitionName = '';
   let category = '';
-  for (let i = 0; i < Math.min(lines.length, 10); i++) {
-    const l = lines[i];
-    if (l.length > 3 && l.length < 80 && !l.match(/^(JUDGES|printed|Page)/i)) {
-      if (!competitionName) { competitionName = l; continue; }
-      if (!category && l.match(/JUDGES DETAILS/i)) continue;
-      if (!category && l.length > 3) { category = l; break; }
+  const judgesIdx = text.indexOf('JUDGES DETAILS');
+  if (judgesIdx > 0) {
+    competitionName = text.substring(0, judgesIdx).trim();
+  }
+  // Category: text between "JUDGES DETAILS PER SKATER" and "printed:"
+  const skaterIdx = text.indexOf('PER SKATER');
+  const printedIdx = text.indexOf('printed:');
+  if (skaterIdx > 0 && printedIdx > skaterIdx) {
+    category = text.substring(skaterIdx + 10, printedIdx).trim();
+  }
+
+  // Find all skater header positions.
+  // Pattern: rank(1-2 digits) FIRSTNAME LASTNAME club startnum total tes pcs ded
+  // Key insight: after the club name comes a 1-2 digit starting number, then 4 decimal scores.
+  // We anchor on: digit(s) space NAME(S_IN_CAPS) ... digit{1,2} space score.score score.score score.score score.score
+  // The name is UPPERCASE SURNAME so we look for: ^(\d{1,2}) ([A-ZÄÖÜ].+?) (\d{1,2}) (\d+\.\d{2}) (\d+\.\d{2}) (\d+\.\d{2}) (\d+\.\d{2})
+  // We find positions of each skater block by splitting on the "# Executed Elements" marker
+  // which reliably appears after each skater header.
+
+  const positions = [];
+  // Match: rank firstname LASTNAME club startingnum total tes pcs ded
+  // Observed: "1 Signe WATZEL Sport Club Charlottenburg e.V. 3 30.57 14.69 15.88 0.00"
+  // Strategy: find all occurrences of pattern: \b(\d{1,2}) ([A-ZÄÖÜa-zäöüß]+ [A-ZÄÖÜ][A-ZÄÖÜa-zäöüß]+) (.+?) (\d{1,2}) (\d+\.\d{2}) (\d+\.\d{2}) (\d+\.\d{2}) (\d+\.\d{2})
+  const headerRe = /(?:^|(?<=\.\d{2})\s*)(\d{1,2})\s+([A-ZÄÖÜa-zäöüßé]+\s+[A-ZÄÖÜ][A-ZÄÖÜa-zäöüßé]+(?:\s+[A-ZÄÖÜ][A-ZÄÖÜa-zäöüßé]+)?)\s+(.+?)\s+(\d{1,2})\s+(\d+\.\d{2})\s+(\d+\.\d{2})\s+(\d+\.\d{2})\s+(\d+\.\d{2})/g;
+
+  let m;
+  while ((m = headerRe.exec(text)) !== null) {
+    const rank = parseInt(m[1]);
+    if (rank < 1 || rank > 99) continue;
+    // Sanity: total score should be reasonable (5-300 pts)
+    const total = parseFloat(m[5]);
+    if (total < 1 || total > 400) continue;
+    // Avoid matching "Page X / Y" lines or similar
+    if (m[3].match(/^(Page|printed|JUDGES|Rank|Score)/i)) continue;
+    positions.push({
+      idx: m.index,
+      rank,
+      name: m[2].trim(),
+      club: m[3].trim(),
+      total,
+      tes: parseFloat(m[6]),
+      pcs: parseFloat(m[7]),
+      ded: parseFloat(m[8]),
+    });
+  }
+
+  // Fallback: simpler approach if lookbehind fails (Safari doesn't support it)
+  if (positions.length === 0) {
+    const simpleRe = /\b(\d{1,2})\s+([A-ZÄÖÜa-zäöüßé]+\s+[A-ZÄÖÜ][A-ZÄÖÜa-zäöüßé]+(?:\s+[A-ZÄÖÜ][A-ZÄÖÜa-zäöüßé]+)?)\s+(.+?)\s+(\d{1,2})\s+(\d+\.\d{2})\s+(\d+\.\d{2})\s+(\d+\.\d{2})\s+(\d+\.\d{2})/g;
+    while ((m = simpleRe.exec(text)) !== null) {
+      const rank = parseInt(m[1]);
+      if (rank < 1 || rank > 99) continue;
+      const total = parseFloat(m[5]);
+      if (total < 1 || total > 400) continue;
+      if (m[3].match(/^(Page|printed|JUDGES|Rank|Score)/i)) continue;
+      // Avoid duplicates
+      if (!positions.find(p => p.rank === rank)) {
+        positions.push({ idx: m.index, rank, name: m[2].trim(), club: m[3].trim(), total, tes: parseFloat(m[6]), pcs: parseFloat(m[7]), ded: parseFloat(m[8]) });
+      }
     }
   }
 
-  // Parse skaters
+  if (positions.length === 0) throw new Error('No skaters found — please check this is a Judges Details PDF');
+
+  // Sort by position in text
+  positions.sort((a, b) => a.idx - b.idx);
+
+  // Remove duplicates (same rank)
+  const seen = new Set();
+  const unique = positions.filter(p => { if (seen.has(p.rank)) return false; seen.add(p.rank); return true; });
+
+  // Extract per-skater blocks
   const skaters = [];
-  // Pattern: Rank Name Club StartingNumber TotalSegment TotalElement TotalPCS TotalDeductions
-  // Look for rank lines: number followed by name
-  const skaterPattern = /(\d+)\s+([A-ZÄÖÜ][a-zA-ZÄÖÜäöüß]+(?:\s+[A-ZÄÖÜ][a-zA-ZÄÖÜäöüß]+){1,3})\s+(.+?)\s+(\d+)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)/g;
-
-  // Split text into per-skater sections by detecting rank + name patterns
-  // Use a more robust approach: find all "Rank Name Club ... Total" lines
-  const skaterHeaderRe = /\b(\d+)\s+([A-ZÄÖÜ][A-ZÄÖÜa-zäöüß]+\s+[A-ZÄÖÜ][A-ZÄÖÜa-zäöüß]+(?:\s+[A-ZÄÖÜ][A-ZÄÖÜa-zäöüß]+)?)\s+(.+?)\s+(\d{1,2})\s+([\d]+\.[\d]{2})\s+([\d]+\.[\d]{2})\s+([\d]+\.[\d]{2})\s+([\d]+\.[\d]{2})/g;
-
-  let match;
-  const skaterBlocks = [];
-  const positions = [];
-
-  while ((match = skaterHeaderRe.exec(text)) !== null) {
-    positions.push({ idx: match.index, rank: parseInt(match[1]), name: match[2].trim(), club: match[3].trim(), total: parseFloat(match[5]), tes: parseFloat(match[6]), pcs: parseFloat(match[7]), ded: parseFloat(match[8]) });
+  for (let i = 0; i < unique.length; i++) {
+    const start = unique[i].idx;
+    const end = i < unique.length - 1 ? unique[i+1].idx : text.length;
+    const block = text.substring(start, end);
+    const elements = parseElements(block);
+    const comp = parseComponents(block);
+    // Factor: appears as "Factor" followed by the multiplier value
+    const factorMatch = block.match(/Factor[\s\S]{0,20}?(\d+\.\d{2})/);
+    const factor = factorMatch ? parseFloat(factorMatch[1]) : 1.70;
+    skaters.push({ rank: unique[i].rank, name: unique[i].name, club: unique[i].club, total: unique[i].total, tes: unique[i].tes, pcs: unique[i].pcs, ded: unique[i].ded, factor, elements, comp });
   }
 
-  if (positions.length === 0) throw new Error('No skaters found');
-
-  for (let i = 0; i < positions.length; i++) {
-    const start = positions[i].idx;
-    const end = i < positions.length - 1 ? positions[i+1].idx : text.length;
-    skaterBlocks.push({ ...positions[i], block: text.substring(start, end) });
-  }
-
-  for (const sb of skaterBlocks) {
-    const elements = parseElements(sb.block);
-    const comp = parseComponents(sb.block);
-    const factor = parseFloat((sb.block.match(/Factor\s+([\d.]+)/i)||['','1.70'])[1]) || 1.70;
-    skaters.push({ rank: sb.rank, name: sb.name, club: sb.club, total: sb.total, tes: sb.tes, pcs: sb.pcs, ded: sb.ded, factor, elements, comp });
-  }
-
+  skaters.sort((a, b) => a.rank - b.rank);
   return { name: competitionName, category, skaters };
 }
 
 function parseElements(block) {
+  // The text is a single merged string. Element lines look like:
+  // "1 2S+2T 2.60 0.04 1 0 0 2.64"  (3 judges)
+  // "1 2Fq q 1.80 -0.36 -2 -2 -2 1.44"  (with flag info between code and bv)
+  // "8 CSp1* * 0.00 0.00 - - - 0.00"  (invalid, dashes for GOE)
+  // Key: element number (1-9 or 1-12), then element code, then base value XX.XX,
+  //      then GOE -X.XX or X.XX, then judge scores, then panel score XX.XX
+  // The "Info" column (flags like q, <<, <, e, !, F, *) appears between code and base value
+
   const elements = [];
-  // Element lines look like: number code [flags] base_value GOE j1 j2 ... score
-  // e.g.: 1 2S+2T 2.60 0.04 1 0 0 2.64
-  // With possible flags: q << < e ! F * V
-  const elRe = /\b(\d{1,2})\s+([A-Z0-9+*<!\s]+?(?:SEQ|COMBO|REP)?)\s+([\d.]+)\s+(-?[\d.]+)\s+(-?\d+\s+){1,9}([\d.]+)/g;
 
-  // More targeted pattern
-  const lineRe = /^\s*(\d{1,2})\s+([\w+*<! ]+?)\s+([\d]+\.[\d]{2})\s+(-?[\d]+\.[\d]{2})\s+((?:-?\d+\s*){1,9})([\d]+\.[\d]{2})/gm;
+  // Split the block at "# Executed Elements" to get just the elements portion
+  const execIdx = block.indexOf('# Executed Elements');
+  const compIdx = block.indexOf('Program Components');
+  const elBlock = execIdx >= 0
+    ? block.substring(execIdx, compIdx >= 0 ? compIdx : block.length)
+    : block.substring(0, compIdx >= 0 ? compIdx : block.length);
 
-  let m;
-  while ((m = lineRe.exec(block)) !== null) {
-    const num = parseInt(m[1]);
-    if (num < 1 || num > 20) continue;
-    const code = m[2].trim();
-    const bv = parseFloat(m[3]);
-    const goe = parseFloat(m[4]);
-    const score = parseFloat(m[6]);
-    if (isNaN(bv) || isNaN(goe) || isNaN(score)) continue;
-    if (score > 20 || bv > 20) continue; // sanity check
+  // Pattern: element_number  element_code  [info_flags]  base_value  goe  [judge_scores|-]  panel_score
+  // We look for sequences of: 1-2 digit number, then alphanumeric+symbols code, then decimal, then signed decimal, then panel decimal
+  // The tricky part: judge scores can be - (dashes) for invalid elements
+  // Approach: tokenise the element block and process token by token
 
-    const flags = extractFlags(code);
-    const desc = elementDescription(code);
-    elements.push({ code, desc, bv, goe, score, flags });
+  // Extract all tokens (numbers, element codes, punctuation)
+  // Element codes contain: letters, digits, +, <, !, *, q, e, F (fall marker)
+  // A reliable anchor: element number followed by known element code patterns
+
+  // Regex: capture (elnum) (code_with_flags) (base_value) (goe) ... (panel_score)
+  // The info/flag column repeats symbols from the code, e.g. "2Fq q" or "2Lo< <" or "CSp1* *"
+  // So code + optional_repeated_flags + bv + goe + judges + score
+
+  // Build a flattened token list for element block only
+  const tokens = elBlock.match(/(-?\d+\.?\d*|[A-Za-zÄÖÜäöüß]+\d*[A-Za-z]*|[+<<!*qFeV]+|-)/g) || [];
+
+  let i = 0;
+  while (i < tokens.length) {
+    const elNum = parseInt(tokens[i]);
+    if (isNaN(elNum) || elNum < 1 || elNum > 20) { i++; continue; }
+
+    // Next token should be start of element code (letter or digit+letter)
+    if (i + 1 >= tokens.length) { i++; continue; }
+    const nextTok = tokens[i+1];
+    if (!nextTok.match(/^[A-Z0-9]/i)) { i++; continue; }
+
+    // Collect code tokens until we hit a decimal number (the base value)
+    let codeParts = [];
+    let j = i + 1;
+    while (j < tokens.length && !tokens[j].match(/^\d+\.\d+$/)) {
+      // Stop if we encounter a standalone number that's not a flag
+      if (tokens[j].match(/^-?\d+$/) && codeParts.length > 0) break;
+      codeParts.push(tokens[j]);
+      j++;
+      if (j - (i+1) > 8) break; // safety
+    }
+
+    if (j >= tokens.length) { i++; continue; }
+
+    const bv = parseFloat(tokens[j]);
+    if (isNaN(bv) || bv > 20) { i++; continue; }
+    j++;
+
+    // GOE: next decimal (possibly negative) or could be 0.00
+    if (j >= tokens.length) { i++; continue; }
+    const goe = parseFloat(tokens[j]);
+    if (isNaN(goe)) { i++; continue; }
+    j++;
+
+    // Skip judge scores (integers or dashes) until we hit next decimal
+    while (j < tokens.length && !tokens[j].match(/^\d+\.\d+$/)) {
+      j++;
+      if (j - i > 25) break;
+    }
+    if (j >= tokens.length) { i++; continue; }
+
+    const score = parseFloat(tokens[j]);
+    if (isNaN(score) || score > 20) { i++; continue; }
+    j++;
+
+    // Build the full code string (join code parts, removing duplicate flag info)
+    // e.g. ["2Fq","q"] → "2Fq", ["2Lo<","<"] → "2Lo<", ["CSp1*","*"] → "CSp1*"
+    // The info column just repeats the flags, so take first meaningful part
+    let code = codeParts[0] || '';
+    // Add combination/sequence suffix if present
+    for (let k = 1; k < codeParts.length; k++) {
+      const p = codeParts[k];
+      if (p === 'SEQ' || p === 'COMBO' || p === 'REP') { code += '+' + p; break; }
+      if (p.match(/^[A-Z0-9]/i) && !p.match(/^[qF<>!*eV]+$/i)) {
+        // It's another element in a combination (e.g. +2T, +1Lo)
+        if (codeParts[k-1] !== '+') code += '+';
+        code += p;
+      }
+    }
+    // Restore + signs that got tokenised away
+    // Reconstruct from original block instead
+    const codeRaw = extractRawCode(elBlock, elNum, bv);
+    const finalCode = codeRaw || code;
+
+    const flags = extractFlags(finalCode);
+    const desc = elementDescription(finalCode);
+    elements.push({ code: finalCode, desc, bv, goe, score, flags });
+
+    i = j;
   }
 
   return elements;
+}
+
+function extractRawCode(block, elNum, bv) {
+  // Find the element in the raw block by element number and base value
+  // Pattern: elNum space code [flags] space bv
+  // e.g. "1 2S+2T 2.60" or "2 2Fq q 1.80" or "8 CSp1* * 0.00"
+  const bvStr = bv.toFixed(2);
+  // Match: elNum, then capture everything up to bvStr
+  const re = new RegExp('\\b' + elNum + '\\s+([A-Z0-9][^\\d]{0,30}?)\\s+' + bvStr.replace('.', '\\.'));
+  const m = block.match(re);
+  if (m) {
+    // Clean up: remove trailing flag repetitions like "q q" → "q", "< <" → "<"
+    let code = m[1].trim();
+    // Remove duplicate flag suffixes (info column repeats them)
+    code = code.replace(/\s+[<<!qeF*V]+$/, '');
+    return code;
+  }
+  return null;
 }
 
 function extractFlags(code) {
@@ -661,15 +802,21 @@ function elementDescription(code) {
 }
 
 function parseComponents(block) {
-  // Look for component scores: "Composition 1.70 2.75 3.50 3.25 3.17" or similar
-  // The last number in each row is the panel average
-  const coMatch = block.match(/Composition\s+[\d.]+\s+(?:[\d.]+\s+){1,9}([\d.]+)/);
-  const prMatch = block.match(/Presentation\s+[\d.]+\s+(?:[\d.]+\s+){1,9}([\d.]+)/);
-  const ssMatch = block.match(/Skating\s+Skills\s+[\d.]+\s+(?:[\d.]+\s+){1,9}([\d.]+)/);
+  // Text is merged: "Composition 1.70 2.75 3.50 3.25 3.17Presentation 1.70 2.75 3.25 3.50 3.17Skating Skills..."
+  // Extract all decimals between keyword and next keyword; last one is the panel average.
+  function getScore(keyword, nextKeyword) {
+    const start = block.indexOf(keyword);
+    if (start < 0) return null;
+    const after = start + keyword.length;
+    const end = nextKeyword ? block.indexOf(nextKeyword, after) : block.indexOf('Judges Total', after);
+    const seg = (end > after) ? block.substring(after, end) : block.substring(after, after + 120);
+    const nums = seg.match(/\d+\.\d{2}/g);
+    return nums && nums.length ? parseFloat(nums[nums.length - 1]) : null;
+  }
   return {
-    co: coMatch ? parseFloat(coMatch[1]) : 3.00,
-    pr: prMatch ? parseFloat(prMatch[1]) : 3.00,
-    ss: ssMatch ? parseFloat(ssMatch[1]) : 3.00,
+    co: getScore('Composition', 'Presentation') || 3.00,
+    pr: getScore('Presentation', 'Skating Skills') || 3.00,
+    ss: getScore('Skating Skills', 'Judges Total') || 3.00,
   };
 }
 
