@@ -1,0 +1,1163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Skating Score Explainer</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<style>
+  :root {
+    --bg: #f5f4f0;
+    --surface: #ffffff;
+    --surface2: #f0efe9;
+    --border: rgba(0,0,0,0.10);
+    --border2: rgba(0,0,0,0.18);
+    --text: #1a1a18;
+    --text2: #5a5a54;
+    --text3: #9a9a90;
+    --blue: #1d6fa4;
+    --blue-bg: #e8f2f9;
+    --green: #2d7a3a;
+    --green-bg: #e8f4ea;
+    --amber: #9a5c00;
+    --amber-bg: #fdf0d8;
+    --red: #8a2020;
+    --red-bg: #faeaea;
+    --gray-bg: #e8e7e0;
+    --radius: 12px;
+    --radius-sm: 8px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Georgia', 'Times New Roman', serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+  .app { max-width: 480px; margin: 0 auto; min-height: 100vh; background: var(--bg); }
+
+  /* Header */
+  .header { background: var(--text); color: white; padding: 16px 20px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 100; }
+  .header-title { font-size: 15px; font-weight: normal; letter-spacing: 0.02em; }
+  .header-title span { opacity: 0.5; }
+  .lang-toggle { display: flex; gap: 2px; background: rgba(255,255,255,0.12); border-radius: 6px; padding: 2px; }
+  .lang-btn { padding: 4px 10px; font-size: 12px; font-family: inherit; border: none; background: none; color: rgba(255,255,255,0.6); border-radius: 4px; cursor: pointer; }
+  .lang-btn.active { background: rgba(255,255,255,0.2); color: white; }
+
+  /* Upload screen */
+  .upload-screen { padding: 32px 20px; }
+  .upload-intro { margin-bottom: 28px; }
+  .upload-intro h2 { font-size: 22px; font-weight: normal; line-height: 1.3; margin-bottom: 10px; }
+  .upload-intro p { font-size: 14px; color: var(--text2); line-height: 1.7; }
+  .upload-zone { border: 1.5px dashed var(--border2); border-radius: var(--radius); padding: 36px 24px; text-align: center; cursor: pointer; transition: all 0.2s; background: var(--surface); }
+  .upload-zone:hover, .upload-zone.drag { border-color: var(--blue); background: var(--blue-bg); }
+  .upload-icon { width: 48px; height: 48px; margin: 0 auto 14px; opacity: 0.3; }
+  .upload-zone h3 { font-size: 15px; font-weight: normal; margin-bottom: 6px; }
+  .upload-zone p { font-size: 13px; color: var(--text3); }
+  .upload-zone input { display: none; }
+  .upload-hint { margin-top: 20px; background: var(--surface); border-radius: var(--radius-sm); padding: 14px 16px; font-size: 13px; color: var(--text2); line-height: 1.6; border: 0.5px solid var(--border); }
+  .upload-hint strong { color: var(--text); font-weight: normal; font-style: italic; }
+  .parsing-state { text-align: center; padding: 48px 24px; }
+  .parsing-state p { font-size: 14px; color: var(--text2); margin-top: 16px; }
+  .spinner { width: 36px; height: 36px; border: 2px solid var(--border2); border-top-color: var(--text); border-radius: 50%; animation: spin 0.8s linear infinite; margin: 0 auto; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .error-box { background: var(--red-bg); border: 0.5px solid rgba(138,32,32,0.2); border-radius: var(--radius-sm); padding: 14px 16px; font-size: 13px; color: var(--red); line-height: 1.6; margin-top: 16px; }
+
+  /* Select screen */
+  .select-screen { padding: 0; }
+  .comp-header { padding: 20px 20px 14px; border-bottom: 0.5px solid var(--border); }
+  .comp-name { font-size: 16px; font-weight: normal; }
+  .comp-cat { font-size: 13px; color: var(--text2); margin-top: 3px; }
+  .comp-back { font-size: 13px; color: var(--text2); cursor: pointer; border: none; background: none; font-family: inherit; padding: 0; margin-bottom: 10px; display: flex; align-items: center; gap: 4px; }
+  .skater-list { padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+  .skater-card { background: var(--surface); border: 0.5px solid var(--border); border-radius: var(--radius); padding: 14px 16px; cursor: pointer; display: flex; align-items: center; justify-content: space-between; transition: all 0.15s; }
+  .skater-card:hover { border-color: var(--border2); box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+  .skater-name { font-size: 15px; }
+  .skater-club { font-size: 12px; color: var(--text2); margin-top: 2px; }
+  .skater-right { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+  .skater-score { text-align: right; }
+  .skater-score-val { font-size: 17px; }
+  .skater-score-lbl { font-size: 11px; color: var(--text3); }
+  .rank-badge { width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 13px; flex-shrink: 0; }
+  .r1 { background: #f5c842; color: #5a3c00; }
+  .r2 { background: #d0d0c8; color: #3a3a38; }
+  .r3 { background: #e8a87c; color: #5a2a10; }
+  .rn { background: var(--gray-bg); color: var(--text2); }
+
+  /* Report screen */
+  .report-screen { padding: 0; }
+  .report-topbar { padding: 12px 16px; display: flex; align-items: center; gap: 10px; border-bottom: 0.5px solid var(--border); }
+  .report-content { padding: 12px; }
+  .card { background: var(--surface); border: 0.5px solid var(--border); border-radius: var(--radius); padding: 16px; margin-bottom: 10px; }
+  .card-title { font-size: 10px; letter-spacing: 0.08em; color: var(--text3); text-transform: uppercase; margin-bottom: 12px; font-family: 'Helvetica Neue', Arial, sans-serif; }
+
+  /* Score hero */
+  .score-hero { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 12px; }
+  .metric { background: var(--surface2); border-radius: var(--radius-sm); padding: 10px; text-align: center; }
+  .metric-lbl { font-size: 10px; color: var(--text2); margin-bottom: 3px; font-family: 'Helvetica Neue', Arial, sans-serif; }
+  .metric-val { font-size: 21px; }
+  .split-bar-wrap { margin-bottom: 5px; }
+  .split-bar { display: flex; height: 8px; border-radius: 4px; overflow: hidden; }
+  .split-legend { display: flex; gap: 14px; font-size: 11px; color: var(--text2); margin-top: 5px; font-family: 'Helvetica Neue', Arial, sans-serif; }
+  .split-dot { width: 8px; height: 8px; border-radius: 2px; display: inline-block; margin-right: 3px; }
+  .insight-box { background: var(--blue-bg); border-left: 3px solid var(--blue); border-radius: 0 var(--radius-sm) var(--radius-sm) 0; padding: 10px 12px; margin-top: 12px; font-size: 13px; line-height: 1.6; color: var(--text); font-family: 'Helvetica Neue', Arial, sans-serif; }
+
+  /* Elements */
+  .el-row { padding: 10px 0; border-bottom: 0.5px solid var(--border); }
+  .el-row:last-child { border-bottom: none; }
+  .el-top { display: flex; align-items: flex-start; gap: 10px; }
+  .el-icon { width: 22px; height: 22px; border-radius: 50%; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 12px; margin-top: 1px; font-family: 'Helvetica Neue', Arial, sans-serif; }
+  .ic-ok   { background: var(--green-bg); color: var(--green); }
+  .ic-warn { background: var(--amber-bg); color: var(--amber); }
+  .ic-bad  { background: var(--red-bg); color: var(--red); }
+  .ic-zero { background: var(--gray-bg); color: var(--text3); }
+  .el-name { font-size: 14px; }
+  .el-desc { font-size: 12px; color: var(--text2); margin-top: 2px; line-height: 1.5; font-family: 'Helvetica Neue', Arial, sans-serif; }
+  .el-right { text-align: right; flex-shrink: 0; margin-left: auto; padding-left: 8px; }
+  .el-score { font-size: 14px; }
+  .el-goe { font-size: 11px; font-family: 'Helvetica Neue', Arial, sans-serif; }
+  .gp { color: var(--green); } .gn { color: var(--red); } .gz { color: var(--text3); }
+  .flags-block { margin-top: 8px; display: flex; flex-direction: column; gap: 5px; }
+  .flag-row { display: flex; align-items: flex-start; gap: 7px; }
+  .flag-pill { font-size: 11px; padding: 2px 8px; border-radius: 10px; white-space: nowrap; flex-shrink: 0; font-family: 'Helvetica Neue', Arial, sans-serif; }
+  .fp-f  { background: var(--red-bg); color: var(--red); }
+  .fp-dg { background: var(--red-bg); color: var(--red); }
+  .fp-ur { background: var(--amber-bg); color: var(--amber); }
+  .fp-q  { background: var(--amber-bg); color: var(--amber); }
+  .fp-e  { background: var(--amber-bg); color: var(--amber); }
+  .fp-nc { background: var(--gray-bg); color: var(--text2); }
+  .fp-inv{ background: var(--gray-bg); color: var(--text2); }
+  .fp-V  { background: var(--gray-bg); color: var(--text2); }
+  .flag-text { font-size: 12px; color: var(--text2); line-height: 1.5; font-family: 'Helvetica Neue', Arial, sans-serif; }
+
+  /* Components */
+  .comp-row-block { padding: 10px 0; border-bottom: 0.5px solid var(--border); }
+  .comp-row-block:last-child { border-bottom: none; }
+  .comp-top-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+  .comp-lbl { font-size: 14px; flex: 1; }
+  .tier-pill { font-size: 11px; padding: 2px 8px; border-radius: 10px; font-family: 'Helvetica Neue', Arial, sans-serif; }
+  .tp-platinum { background: #ddeeff; color: #0a3d6b; }
+  .tp-diamond  { background: #e8e6ff; color: #3a2d8a; }
+  .tp-gold     { background: #fdf0d8; color: #7a4400; }
+  .tp-green    { background: var(--green-bg); color: var(--green); }
+  .tp-orange   { background: var(--amber-bg); color: var(--amber); }
+  .tp-red      { background: var(--red-bg); color: var(--red); }
+  .comp-score-num { font-size: 16px; }
+  .comp-bar-bg { height: 7px; background: var(--surface2); border-radius: 3px; overflow: hidden; position: relative; margin-bottom: 5px; }
+  .comp-bar-fill { height: 100%; border-radius: 3px; }
+  .comp-mid { position: absolute; left: 50%; top: 0; width: 1px; height: 100%; background: var(--border2); }
+  .comp-desc { font-size: 12px; color: var(--text2); line-height: 1.5; font-family: 'Helvetica Neue', Arial, sans-serif; }
+  .scale-strip { display: flex; height: 5px; border-radius: 3px; overflow: hidden; margin: 8px 0 3px; }
+  .scale-labels { display: flex; justify-content: space-between; font-size: 10px; color: var(--text3); margin-bottom: 8px; font-family: 'Helvetica Neue', Arial, sans-serif; }
+  .scale-legend { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+  .scale-legend-item { display: flex; align-items: center; gap: 3px; font-size: 10px; color: var(--text2); font-family: 'Helvetica Neue', Arial, sans-serif; }
+  .scale-dot { width: 8px; height: 8px; border-radius: 2px; }
+  .context-note { background: var(--blue-bg); border-radius: var(--radius-sm); padding: 10px 12px; margin-bottom: 12px; font-size: 12px; color: var(--text2); line-height: 1.6; border: 0.5px solid rgba(29,111,164,0.15); font-family: 'Helvetica Neue', Arial, sans-serif; }
+
+  /* Compare */
+  .compare-row { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; }
+  .cmp-lbl { font-size: 11px; color: var(--text2); width: 70px; flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: 'Helvetica Neue', Arial, sans-serif; }
+  .cmp-track { flex: 1; height: 16px; background: var(--surface2); border-radius: 3px; overflow: hidden; }
+  .cmp-fill { height: 100%; display: flex; align-items: center; padding-left: 6px; font-size: 10px; font-family: 'Helvetica Neue', Arial, sans-serif; }
+  .cmp-you { background: #b8d8f0; color: #0a3d6b; }
+  .cmp-other { background: var(--gray-bg); }
+  .cmp-val { font-size: 11px; color: var(--text2); width: 34px; text-align: right; flex-shrink: 0; font-family: 'Helvetica Neue', Arial, sans-serif; }
+
+  /* Priorities */
+  .view-toggle { display: flex; background: var(--surface2); border-radius: var(--radius-sm); padding: 3px; margin-bottom: 12px; }
+  .vt-btn { flex: 1; padding: 7px; text-align: center; font-size: 13px; border-radius: 6px; cursor: pointer; border: none; background: none; color: var(--text2); font-family: 'Helvetica Neue', Arial, sans-serif; }
+  .vt-btn.active { background: var(--surface); color: var(--text); border: 0.5px solid var(--border); }
+  .priority-item { display: flex; gap: 12px; padding: 10px 0; border-bottom: 0.5px solid var(--border); }
+  .priority-item:last-child { border-bottom: none; }
+  .pnum { width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; flex-shrink: 0; margin-top: 1px; font-family: 'Helvetica Neue', Arial, sans-serif; }
+  .pn1 { background: var(--red-bg); color: var(--red); }
+  .pn2 { background: var(--amber-bg); color: var(--amber); }
+  .pn3 { background: var(--green-bg); color: var(--green); }
+  .p-title { font-size: 14px; margin-bottom: 3px; }
+  .p-body { font-size: 12px; color: var(--text2); line-height: 1.6; font-family: 'Helvetica Neue', Arial, sans-serif; }
+
+  .screen { display: none; }
+  .screen.active { display: block; }
+  @media (max-width: 480px) { .app { max-width: 100%; } }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <div class="header">
+    <div class="header-title" id="header-title">Skating Score Explainer</div>
+    <div class="lang-toggle">
+      <button class="lang-btn active" onclick="setLang('en')" id="btn-en">EN</button>
+      <button class="lang-btn" onclick="setLang('de')" id="btn-de">DE</button>
+    </div>
+  </div>
+
+  <div id="screen-upload" class="screen active">
+    <div class="upload-screen">
+      <div class="upload-intro">
+        <h2 id="ul-title">Understand your skater's results</h2>
+        <p id="ul-subtitle">Upload the official judges details PDF from any ISU competition to get a plain-language explanation of every score — for parents and coaches.</p>
+      </div>
+      <div class="upload-zone" id="upload-zone" onclick="document.getElementById('file-input').click()" ondragover="handleDrag(event)" ondragleave="handleDragLeave(event)" ondrop="handleDrop(event)">
+        <svg class="upload-icon" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M24 32V16M16 24l8-8 8 8"/><rect x="8" y="8" width="32" height="32" rx="4"/>
+        </svg>
+        <h3 id="ul-drop">Drop PDF here or tap to choose</h3>
+        <p id="ul-drop2">Judges Details per Skater — any competition</p>
+        <input type="file" id="file-input" accept=".pdf" onchange="handleFile(event)">
+      </div>
+      <div class="upload-hint" id="ul-hint">
+        <strong id="ul-hint-title">Which file?</strong><br id="ul-hint-br">
+        <span id="ul-hint-text">After each competition, officials publish a "Judges Details per Skater" PDF. This is the document with each skater's elements, base values, GOE marks and component scores listed individually.</span>
+      </div>
+      <div id="parse-state"></div>
+    </div>
+  </div>
+
+  <div id="screen-select" class="screen">
+    <div class="select-screen">
+      <div class="comp-header">
+        <button class="comp-back" onclick="goUpload()">&#8592; <span id="back-lbl">Upload new file</span></button>
+        <div class="comp-name" id="comp-name"></div>
+        <div class="comp-cat" id="comp-cat"></div>
+      </div>
+      <div class="skater-list" id="skater-list"></div>
+    </div>
+  </div>
+
+  <div id="screen-report" class="screen">
+    <div class="report-screen">
+      <div class="report-topbar">
+        <button class="comp-back" onclick="goSelect()" style="margin:0">&#8592; <span id="back-lbl2">All skaters</span></button>
+      </div>
+      <div class="report-content" id="report-content"></div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+let lang = 'en';
+let competitionData = null;
+let currentSkaterIdx = 0;
+let currentView = 'parent';
+
+// ─── TRANSLATIONS ────────────────────────────────────────────────────────────
+const T = {
+  en: {
+    headerTitle: 'Skating Score Explainer',
+    ulTitle: 'Understand your skater\'s results',
+    ulSubtitle: 'Upload the official judges details PDF from any ISU competition to get a plain-language explanation of every score — for parents and coaches.',
+    ulDrop: 'Drop PDF here or tap to choose',
+    ulDrop2: 'Judges Details per Skater — any competition',
+    ulHintTitle: 'Which file?',
+    ulHintText: 'After each competition, officials publish a "Judges Details per Skater" PDF. This is the document with each skater\'s elements, base values, GOE marks and component scores listed individually.',
+    parsing: 'Reading competition results…',
+    parseError: 'Could not read this PDF. Please make sure it is a "Judges Details per Skater" file from an ISU competition.',
+    backUpload: 'Upload new file',
+    backSelect: 'All skaters',
+    pts: 'points',
+    totalScore: 'Total score',
+    technical: 'Technical',
+    artistic: 'Artistic',
+    elements: 'Elements & jumps',
+    elSubtitle: 'Each element has a base value. Judges then add or subtract points based on quality of execution.',
+    artisticScores: 'Artistic scores',
+    artisticSubtitle: 'Judges score three areas on a scale of 0–10. The averages are multiplied by',
+    artisticSubtitle2: 'to give the artistic total.',
+    compareTitle: 'How they compare',
+    compareSubtitle: 'Total score across all skaters in this event',
+    focusTitle: 'Areas to focus on',
+    focusSubtitle: 'The top opportunities to gain points at the next competition, ranked by impact.',
+    forParents: 'For parents',
+    forCoaches: 'For coaches',
+    youLabel: 'you',
+    noChange: 'no change',
+    quality: 'quality',
+    zeropts: '0 pts',
+    twoPartNote: 'The total score is made up of two parts',
+    contextNote: 'These scores use the official ISU scale from 0–10, which runs all the way to Olympic level. Scores in the 2–4 range are completely normal and expected for young skaters in their first competitions — they reflect the starting point of a long journey, not a negative judgement.',
+    scale0: '0',
+    scale5: '5 — average',
+    scale10: '10 — outstanding',
+    tierPoor: '1–2 Poor',
+    tierWeak: '3–4 Weak / Below avg',
+    tierAvg: '5–6 Average / Above avg',
+    tierGood: '7–8 Good / Very good',
+    tierExc: '9–10 Excellent / Outstanding',
+    compCo: 'Composition',
+    compPr: 'Presentation',
+    compSs: 'Skating skills',
+    compCoTip: 'How well the program is designed — use of the full ice surface, structure that follows the music, variety of movement and connections between elements.',
+    compPrTip: 'Engagement and expression — does the skater connect with the music, commit to the performance, and show sensitivity to timing and mood?',
+    compSsTip: 'Quality of edges, steps, turns, balance, speed and overall blade control — the fundamental ability to skate.',
+    tiers: {
+      platinum: 'Platinum', diamond: 'Diamond', gold: 'Gold',
+      green: 'Green', orange: 'Orange', red: 'Red',
+    },
+    tierDescs: {
+      platinum: 'Outstanding — a perfect or near-perfect program',
+      diamond:  'Excellent — only minor or no serious errors',
+      gold:     'Good to very good — strong performance',
+      green6:   'Above average', green5: 'Average',
+      orange4:  'Below average', orange3: 'Weak',
+      red2: 'Poor', red1: 'Very poor', red0: 'Extremely poor',
+    },
+    flags: {
+      f:   { pill:'Fall',               text:'Your skater fell during this element. A fall heavily reduces the quality score (GOE) — judges can deduct up to -5 points from it.' },
+      dg:  { pill:'Downgraded',          text:'More than half of the required rotation was missing. The jump is treated as one level lower — e.g. a double is scored as a single — earning much less base value.' },
+      ur:  { pill:'Under-rotated',       text:'More than a quarter but less than half of the required rotation was missing. The jump keeps its name but receives a reduced base value and a GOE penalty.' },
+      q:   { pill:'Quarter short',       text:'The jump was landed about a quarter-turn short of full rotation. It keeps its full base value, but judges reduce the quality score (GOE).' },
+      e:   { pill:'Wrong edge',          text:'Applies only to Lutz and Flip. The Lutz must take off from the outer back edge of the blade; the Flip from the inner back edge. Here the skater used the wrong edge — penalised in GOE.' },
+      nc:  { pill:'Unclear edge',        text:'The take-off edge on a Lutz or Flip was uncertain — not clearly right or wrong. Carries a smaller penalty than a confirmed wrong edge.' },
+      inv: { pill:'No value — 0 points', text:'This element received zero points. It was either illegal in this category, or a repetition not permitted under the rules. The slot still counts toward the program limit but earns nothing.' },
+      V:   { pill:'Too few revolutions', text:'The spin didn\'t complete the minimum number of rotations required. It still earns some points but at a reduced base value.' },
+    },
+    insights: {
+      won: 'Your skater won this competition. The combination of clean technical elements and strong artistic scores made the difference.',
+      falls: (n) => `Your skater had ${n} fall${n>1?'s':''} during the program. Each fall significantly reduces the quality score for that element. Reducing falls is the single biggest opportunity to improve the result next time.`,
+      invalid: (n) => `${n} element${n>1?'s':''} received zero points because they didn't meet the minimum requirements for this category. These slots earn nothing — a key area to address before the next competition.`,
+      gapSmall: (gap, name, rank) => `Your skater was only ${gap} points behind ${name} in ${rank} place — a very small margin. Cleaner execution on just one or two elements could change the result.`,
+      gapLarge: (gap, tesgap, name, rank) => `The main gap to ${name} (${rank} place) was ${tesgap} points in the technical score. Cleaner landings and fuller rotations are the key area to work on.`,
+    },
+    priorities: {
+      invTitle: (n) => `Make the spin${n>1?'s':''} count`,
+      invBody: (names) => `The ${names} received zero points — not because it was skated badly, but because it didn't meet the minimum requirements for this category (either illegal here, or a repetition that isn't allowed). Every competition slot should score something. Getting these valid could add meaningful points.`,
+      invTitleC: (names) => `Invalid element(s): ${names}`,
+      invBodyC: (names, pts) => `Called with * — illegal for this category or exceeding repetition rules. Occupies program slot(s) but contributes zero TES. Estimated lost base value: ~${pts} pts. Review category-specific element restrictions and adjust program layout.`,
+      fallTitle: (n) => `Safer landings on ${n>1?'jumps and spins':'the jump'}`,
+      fallBody: (names) => `There ${names.split(',').length>1?'were falls':'was a fall'} on the ${names}. A fall costs heavily in the quality score — judges can deduct up to the maximum negative marks. Even landing on two feet instead of falling would recover significant points.`,
+      fallTitleC: (names) => `Fall(s) on: ${names}`,
+      fallBodyC: (names, loss) => `Fall(s) recorded on ${names}, each triggering -5 GOE ceiling. Combined GOE loss: ${loss} pts. Priority: consolidate rotation training before competition difficulty — a two-foot landing recovers substantially more GOE than a fall.`,
+      dgTitle: (names) => `Full rotation on the ${names}`,
+      dgBody: (names) => `The ${names} was missing more than half its rotation, so it was treated as a simpler jump and scored at a lower value. Completing the full rotation — even if the landing isn't perfect — would immediately earn more base points.`,
+      dgTitleC: (names) => `Downgraded jump(s): ${names}`,
+      dgBodyC: (names) => `Called << — more than half rotation missing. Base value reduced to single equivalent. Focus: rotation completion drills, entry speed, hip axis alignment. Consider temporarily removing from competition program until consistent rotation is achieved.`,
+      urTitle: (names) => `A bit more rotation on the ${names}`,
+      urBody: (names) => `The ${names} was landed slightly short of full rotation — more than a quarter turn missing. This reduces the base value and also costs quality marks. Adding just a little more rotation in training would recover those points.`,
+      urTitleC: (names) => `Under-rotated jump(s): ${names}`,
+      urBodyC: (names, loss) => `Called < — more than a quarter but less than half rotation missing. Combined GOE loss: ${loss} pts. Focus: rotation completion at takeoff, air position tightness. Check if jump is ready for competition or should be downgraded in program difficulty.`,
+      qTitle: (names) => `Stick the landing on the ${names}`,
+      qBody: (names) => `The ${names} was landed about a quarter-turn short. The base value is kept but judges marked down the quality. With a slightly tighter air position, these could score cleanly.`,
+      qTitleC: (names) => `Quarter landing(s): ${names}`,
+      qBodyC: (names, loss) => `Called q — approximately ¼ rotation missing at landing. Full base value retained but GOE penalised. Combined GOE loss: ${loss} pts. Focus: check-out position and free leg extension — quarter issues often indicate early rotation check rather than insufficient rotation overall.`,
+      edgeTitle: (names) => `Edge technique on the ${names}`,
+      edgeBody: (names) => `The ${names} took off from the wrong edge of the blade — the Lutz should always jump from the outer back edge. This is a technical habit that, once corrected, removes the penalty entirely.`,
+      edgeTitleC: (names) => `Wrong edge call on: ${names}`,
+      edgeBodyC: (names, loss) => `Edge flag (e) confirmed on ${names}. GOE loss: ${loss} pts. Drill: slow approach with deliberate edge check before the pick. Video feedback from approach angle recommended.`,
+      revTitle: (names) => `More revolutions in the ${names}`,
+      revBody: (names) => `The ${names} didn't reach the minimum number of rotations required, so it was scored at a reduced value. More revolutions in training would recover those points.`,
+      revTitleC: (names) => `Reduced value (V) on: ${names}`,
+      revBodyC: (names) => `Spin(s) called with V — insufficient revolutions. Drill: sustained centring, entry speed. Target 2+ revolutions above minimum as a buffer.`,
+      compTitle: 'Building stage presence and confidence',
+      compBody: 'The artistic scores for this program were in the early stages of development — which is completely normal for a young skater at their first competitions. Performing regularly, even in small shows or practice competitions, helps build the natural ease and musicality that judges reward.',
+      compTitleC: (key, val) => `Program components: all below 3.0 (weakest: ${val})`,
+      compBodyC: 'All PCS marks below 3.0, indicating limited skating quality foundation and performance delivery. Priority: edge quality and basic skating mechanics, musical connection. Consider off-ice movement training and regular performance opportunities in low-stakes settings.',
+    },
+    rankSuffix: (r) => r===1?'st':r===2?'nd':r===3?'rd':'th',
+  },
+  de: {
+    headerTitle: 'Ergebnis-Erklärer',
+    ulTitle: 'Versteh die Ergebnisse deines Kindes',
+    ulSubtitle: 'Lade das offizielle Wertungsrichter-PDF einer ISU-Veranstaltung hoch und erhalte eine verständliche Erklärung aller Bewertungen — für Eltern und Trainer.',
+    ulDrop: 'PDF hier ablegen oder antippen',
+    ulDrop2: 'Wertungsrichter-Details — jede Veranstaltung',
+    ulHintTitle: 'Welche Datei?',
+    ulHintText: 'Nach jedem Wettkampf veröffentlichen die Veranstalter eine PDF-Datei "Judges Details per Skater". Das ist das Dokument mit allen Elementen, Grundwerten, GOE-Noten und Programmkomponenten für jeden Läufer.',
+    parsing: 'Wettkampfergebnisse werden gelesen…',
+    parseError: 'Diese PDF konnte nicht gelesen werden. Bitte prüfe, ob es sich um eine "Judges Details per Skater"-Datei einer ISU-Veranstaltung handelt.',
+    backUpload: 'Neue Datei hochladen',
+    backSelect: 'Alle Läufer',
+    pts: 'Punkte',
+    totalScore: 'Gesamtpunktzahl',
+    technical: 'Technisch',
+    artistic: 'Artistisch',
+    elements: 'Elemente & Sprünge',
+    elSubtitle: 'Jedes Element hat einen Grundwert. Die Richter addieren oder subtrahieren dann Punkte basierend auf der Ausführungsqualität.',
+    artisticScores: 'Artistische Bewertungen',
+    artisticSubtitle: 'Richter bewerten drei Bereiche auf einer Skala von 0–10. Die Durchschnittswerte werden mit',
+    artisticSubtitle2: 'multipliziert, um die artistische Gesamtpunktzahl zu ergeben.',
+    compareTitle: 'Vergleich mit anderen',
+    compareSubtitle: 'Gesamtpunktzahl aller Läufer dieser Veranstaltung',
+    focusTitle: 'Worauf sollte man sich konzentrieren',
+    focusSubtitle: 'Die wichtigsten Möglichkeiten, beim nächsten Wettkampf mehr Punkte zu erzielen, nach Bedeutung geordnet.',
+    forParents: 'Für Eltern',
+    forCoaches: 'Für Trainer',
+    youLabel: 'du',
+    noChange: 'keine Änd.',
+    quality: 'Ausführung',
+    zeropts: '0 Pkte',
+    twoPartNote: 'Die Gesamtpunktzahl setzt sich aus zwei Teilen zusammen',
+    contextNote: 'Diese Bewertungen verwenden die offizielle ISU-Skala von 0–10, die bis zur olympischen Ebene reicht. Werte im Bereich 2–4 sind für junge Läufer bei ihren ersten Wettkämpfen völlig normal und erwartet — sie spiegeln den Ausgangspunkt einer langen Reise wider, kein negatives Urteil.',
+    scale0: '0',
+    scale5: '5 — Durchschnitt',
+    scale10: '10 — herausragend',
+    tierPoor: '1–2 Schlecht',
+    tierWeak: '3–4 Schwach / Unterdurchschnittl.',
+    tierAvg: '5–6 Durchschnittl. / Überdurchschnittl.',
+    tierGood: '7–8 Gut / Sehr gut',
+    tierExc: '9–10 Ausgezeichnet / Herausragend',
+    compCo: 'Komposition',
+    compPr: 'Präsentation',
+    compSs: 'Schlittschuhlaufen',
+    compCoTip: 'Wie gut das Programm gestaltet ist — Nutzung der gesamten Eisfläche, zur Musik passende Struktur, Bewegungsvielfalt und Verbindungen zwischen den Elementen.',
+    compPrTip: 'Engagement und Ausdruck — verbindet sich der Läufer mit der Musik, setzt er die Performance überzeugend um und zeigt er Sensibilität für Timing und Stimmung?',
+    compSsTip: 'Qualität der Kanten, Schritte, Drehungen, Balance, Geschwindigkeit und allgemeine Klingenkontrolle — die grundlegende Fähigkeit zu laufen.',
+    tiers: {
+      platinum: 'Platin', diamond: 'Diamant', gold: 'Gold',
+      green: 'Grün', orange: 'Orange', red: 'Rot',
+    },
+    tierDescs: {
+      platinum: 'Herausragend — ein perfektes oder nahezu perfektes Programm',
+      diamond:  'Ausgezeichnet — nur geringfügige oder keine schwerwiegenden Fehler',
+      gold:     'Gut bis sehr gut — starke Leistung',
+      green6:   'Überdurchschnittlich', green5: 'Durchschnittlich',
+      orange4:  'Unterdurchschnittlich', orange3: 'Schwach',
+      red2: 'Schlecht', red1: 'Sehr schlecht', red0: 'Extrem schlecht',
+    },
+    flags: {
+      f:   { pill:'Sturz',                  text:'Dein Kind ist bei diesem Element gestürzt. Ein Sturz reduziert die Ausführungsnote (GOE) stark — die Richter können bis zu -5 Punkte abziehen.' },
+      dg:  { pill:'Herabgestuft',            text:'Mehr als die Hälfte der erforderlichen Rotation fehlte. Der Sprung wird eine Stufe niedriger eingestuft — ein Doppelsprung wird z. B. als Einfachsprung gewertet — und erhält dadurch viel weniger Grundwert.' },
+      ur:  { pill:'Unterrotiert',            text:'Mehr als ein Viertel, aber weniger als die Hälfte der erforderlichen Rotation fehlte. Der Sprung behält seinen Namen, erhält aber einen reduzierten Grundwert und einen GOE-Abzug.' },
+      q:   { pill:'Viertelrotation fehlt',   text:'Der Sprung wurde etwa eine Vierteldrehung vor der vollständigen Rotation gelandet. Der Grundwert bleibt erhalten, aber die Richter reduzieren die Ausführungsnote (GOE).' },
+      e:   { pill:'Falsche Kante',           text:'Gilt nur für Lutz und Flip. Der Lutz muss von der äußeren hinteren Kante abspringen; der Flip von der inneren hinteren Kante. Hier verwendete der Läufer die falsche Kante — wird in der GOE bestraft.' },
+      nc:  { pill:'Unklare Kante',           text:'Die Absprungkante beim Lutz oder Flip war unklar — nicht eindeutig richtig oder falsch. Geringere Strafe als bei einer bestätigten falschen Kante.' },
+      inv: { pill:'Kein Wert — 0 Punkte',    text:'Dieses Element erhielt null Punkte. Es war entweder in dieser Kategorie nicht erlaubt oder eine Wiederholung, die nicht den Regeln entspricht. Der Slot zählt noch zum Programmlimit, bringt aber nichts ein.' },
+      V:   { pill:'Zu wenige Umdrehungen',   text:'Der Spin hat die Mindestanzahl an erforderlichen Umdrehungen nicht erreicht. Es werden noch einige Punkte vergeben, aber zu einem reduzierten Grundwert.' },
+    },
+    insights: {
+      won: 'Dein Kind hat diesen Wettkampf gewonnen. Die Kombination aus sauberen technischen Elementen und starken artistischen Wertungen hat den Unterschied gemacht.',
+      falls: (n) => `Dein Kind hatte ${n} Sturz${n>1?'e':''} während des Programms. Jeder Sturz reduziert die Ausführungsnote für dieses Element erheblich. Weniger Stürze sind die größte Möglichkeit, das Ergebnis beim nächsten Mal zu verbessern.`,
+      invalid: (n) => `${n} Element${n>1?'e':''} erhielt${n>1?'en':''} null Punkte, weil sie die Mindestanforderungen für diese Kategorie nicht erfüllten. Diese Slots bringen nichts ein — ein wichtiger Bereich für das nächste Training.`,
+      gapSmall: (gap, name, rank) => `Dein Kind lag nur ${gap} Punkte hinter ${name} auf Platz ${rank} — ein sehr kleiner Abstand. Eine sauberere Ausführung bei ein oder zwei Elementen könnte das Ergebnis verändern.`,
+      gapLarge: (gap, tesgap, name, rank) => `Der Hauptunterschied zu ${name} (Platz ${rank}) lag bei ${tesgap} Punkten in der technischen Wertung. Sauberere Landungen und vollständigere Rotationen sind der Schlüssel.`,
+    },
+    priorities: {
+      invTitle: (n) => `${n>1?'Die Spins':'Den Spin'} zum Zählen bringen`,
+      invBody: (names) => `Das Element ${names} erhielt null Punkte — nicht weil es schlecht ausgeführt wurde, sondern weil es die Mindestanforderungen dieser Kategorie nicht erfüllte (entweder hier nicht erlaubt oder eine unzulässige Wiederholung). Jeder Programm-Slot sollte Punkte bringen. Diese Elemente zu verbessern könnte wichtige Punkte hinzufügen.`,
+      invTitleC: (names) => `Ungültige Elemente: ${names}`,
+      invBodyC: (names, pts) => `Mit * markiert — für diese Kategorie nicht erlaubt oder Wiederholungsregeln überschritten. Besetzt Programm-Slots, trägt aber null zur TES bei. Geschätzter verlorener Grundwert: ~${pts} Pkte. Kategoriespezifische Elementbeschränkungen überprüfen und Programmgestaltung anpassen.`,
+      fallTitle: (n) => `Sicherere Landungen bei ${n>1?'Sprüngen und Spins':'dem Sprung'}`,
+      fallBody: (names) => `Es gab Stürze bei ${names}. Ein Sturz kostet stark in der Ausführungsnote — Richter können bis zur maximalen Negativbewertung abziehen. Selbst eine Landung auf zwei Beinen statt eines Sturzes würde erheblich mehr Punkte retten.`,
+      fallTitleC: (names) => `Stürze bei: ${names}`,
+      fallBodyC: (names, loss) => `Stürze bei ${names}, jeder mit -5 GOE-Deckel. Kombinierter GOE-Verlust: ${loss} Pkte. Priorität: Rotationstraining festigen vor Wettkampfschwierigkeit — eine Zweilandung rettet wesentlich mehr GOE als ein Sturz.`,
+      dgTitle: (names) => `Vollständige Rotation beim ${names}`,
+      dgBody: (names) => `Beim ${names} fehlte mehr als die Hälfte der Rotation, daher wurde er als einfacherer Sprung gewertet. Eine vollständige Rotation — auch wenn die Landung nicht perfekt ist — würde sofort mehr Grundwert einbringen.`,
+      dgTitleC: (names) => `Herabgestufte Sprünge: ${names}`,
+      dgBodyC: (names) => `Als << markiert — mehr als halbe Rotation fehlend. Grundwert auf Einzeläquivalent reduziert. Fokus: Rotationsvollendungsübungen, Anlaufgeschwindigkeit, Hüftachsenausrichtung.`,
+      urTitle: (names) => `Etwas mehr Rotation beim ${names}`,
+      urBody: (names) => `Der ${names} wurde leicht vor der vollen Rotation gelandet — mehr als eine Viertelrunde fehlend. Dies reduziert den Grundwert und kostet auch Ausführungspunkte. Etwas mehr Rotation im Training würde diese Punkte zurückgewinnen.`,
+      urTitleC: (names) => `Unterrotierte Sprünge: ${names}`,
+      urBodyC: (names, loss) => `Als < markiert — mehr als ein Viertel, aber weniger als halbe Rotation fehlend. Kombinierter GOE-Verlust: ${loss} Pkte. Fokus: Rotationsvollendung beim Absprung, Körperhaltung in der Luft prüfen.`,
+      qTitle: (names) => `Sauberere Landung beim ${names}`,
+      qBody: (names) => `Der ${names} wurde etwa eine Viertelrunde vor der vollen Rotation gelandet. Der Grundwert bleibt erhalten, aber die Richter haben die Qualität bewertet. Mit einer etwas engeren Körperhaltung in der Luft könnten diese sauber gewertet werden.`,
+      qTitleC: (names) => `Viertellandungen: ${names}`,
+      qBodyC: (names, loss) => `Als q markiert — ca. ¼ Rotation bei Landung fehlend. Grundwert erhalten, aber GOE bestraft. Kombinierter GOE-Verlust: ${loss} Pkte. Fokus: Ausgangsposition und freies Bein — Viertelprobleme zeigen oft frühes Rotationsabbremsen.`,
+      edgeTitle: (names) => `Kantentechnik beim ${names}`,
+      edgeBody: (names) => `Der ${names} sprang von der falschen Kante ab — der Lutz muss immer von der äußeren hinteren Kante abspringen. Diese technische Gewohnheit, einmal korrigiert, entfernt die Strafe vollständig.`,
+      edgeTitleC: (names) => `Falsche Kante bei: ${names}`,
+      edgeBodyC: (names, loss) => `Kante (e) bestätigt bei ${names}. GOE-Verlust: ${loss} Pkte. Übung: langsamer Anlauf mit bewusstem Kantencheck vor dem Pick. Videoanalyse aus Anlaufwinkel empfohlen.`,
+      revTitle: (names) => `Mehr Umdrehungen beim ${names}`,
+      revBody: (names) => `Der ${names} erreichte nicht die erforderliche Mindestanzahl an Umdrehungen und wurde daher zu einem reduzierten Wert bewertet. Mehr Umdrehungen im Training würden diese Punkte zurückgewinnen.`,
+      revTitleC: (names) => `Reduzierter Wert (V) bei: ${names}`,
+      revBodyC: (names) => `Spin mit V markiert — unzureichende Umdrehungen. Übung: gleichmäßige Zentrierung, Einfahrtsgeschwindigkeit. Ziel: 2+ Umdrehungen über dem Minimum als Puffer.`,
+      compTitle: 'Bühnenpräsenz und Selbstbewusstsein aufbauen',
+      compBody: 'Die artistischen Wertungen für dieses Programm befanden sich noch in der frühen Entwicklungsphase — was für junge Läufer bei ihren ersten Wettkämpfen völlig normal ist. Regelmäßige Auftritte, auch in kleinen Schaukäufen oder Übungswettkämpfen, helfen, die natürliche Leichtigkeit und Musikalität aufzubauen, die Richter belohnen.',
+      compTitleC: (key, val) => `Programmkomponenten: alle unter 3,0 (schwächste: ${val})`,
+      compBodyC: 'Alle PCS-Werte unter 3,0, was auf begrenzte Skating-Qualität und Auftrittslieferung hinweist. Priorität: Kantengualität und grundlegende Skating-Mechanik, musikalische Verbindung. Off-Ice-Bewegungstraining und regelmäßige Auftrittsmöglichkeiten in entspannter Atmosphäre empfohlen.',
+    },
+    rankSuffix: (r) => '.',
+  }
+};
+
+function t(key) {
+  const keys = key.split('.');
+  let obj = T[lang];
+  for (const k of keys) obj = obj?.[k];
+  return obj ?? key;
+}
+
+// ─── LANGUAGE ────────────────────────────────────────────────────────────────
+function setLang(l) {
+  lang = l;
+  document.getElementById('btn-en').classList.toggle('active', l==='en');
+  document.getElementById('btn-de').classList.toggle('active', l==='de');
+  document.getElementById('header-title').textContent = t('headerTitle');
+  document.getElementById('ul-title').textContent = t('ulTitle');
+  document.getElementById('ul-subtitle').textContent = t('ulSubtitle');
+  document.getElementById('ul-drop').textContent = t('ulDrop');
+  document.getElementById('ul-drop2').textContent = t('ulDrop2');
+  document.getElementById('ul-hint-title').textContent = t('ulHintTitle');
+  document.getElementById('ul-hint-text').textContent = t('ulHintText');
+  if (competitionData) {
+    if (document.getElementById('screen-select').classList.contains('active')) renderSelectScreen();
+    if (document.getElementById('screen-report').classList.contains('active')) renderReport(currentSkaterIdx);
+  }
+}
+
+// ─── TIER LOGIC ──────────────────────────────────────────────────────────────
+function getTier(v) {
+  if (v >= 10)   return { name: t('tiers.platinum'), cls:'tp-platinum', descKey:'platinum', color:'#1d6fa4' };
+  if (v >= 9)    return { name: t('tiers.diamond'),  cls:'tp-diamond',  descKey:'diamond',  color:'#4a3db0' };
+  if (v >= 7)    return { name: t('tiers.gold'),     cls:'tp-gold',     descKey:'gold',     color:'#c07800' };
+  if (v >= 6)    return { name: t('tiers.green'),    cls:'tp-green',    descKey:'green6',   color:'#2d7a3a' };
+  if (v >= 5)    return { name: t('tiers.green'),    cls:'tp-green',    descKey:'green5',   color:'#2d7a3a' };
+  if (v >= 4)    return { name: t('tiers.orange'),   cls:'tp-orange',   descKey:'orange4',  color:'#b06000' };
+  if (v >= 3)    return { name: t('tiers.orange'),   cls:'tp-orange',   descKey:'orange3',  color:'#b06000' };
+  if (v >= 2)    return { name: t('tiers.red'),      cls:'tp-red',      descKey:'red2',     color:'#8a2020' };
+  if (v >= 1)    return { name: t('tiers.red'),      cls:'tp-red',      descKey:'red1',     color:'#8a2020' };
+  return          { name: t('tiers.red'),             cls:'tp-red',      descKey:'red0',     color:'#8a2020' };
+}
+
+// ─── PDF PARSING ─────────────────────────────────────────────────────────────
+async function parsePDF(file) {
+  const arrayBuffer = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  let fullText = '';
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    const content = await page.getTextContent();
+    const pageText = content.items.map(item => item.str).join(' ');
+    fullText += pageText + '\n';
+  }
+  return parseCompetitionText(fullText);
+}
+
+function parseCompetitionText(text) {
+  // The PDF text is extracted as one long merged string with no newlines.
+  // Format observed: "SCC POKAL 2026JUDGES DETAILS PER SKATERNEULINGE MÄDCHEN FREE SKATINGprinted: ..."
+  // Then per skater: "1 Signe WATZEL Sport Club Charlottenburg e.V. 3 30.57 14.69 15.88 0.00# Executed Elements..."
+
+  // Extract competition name: text before "JUDGES DETAILS"
+  let competitionName = '';
+  let category = '';
+  const judgesIdx = text.indexOf('JUDGES DETAILS');
+  if (judgesIdx > 0) {
+    competitionName = text.substring(0, judgesIdx).trim();
+  }
+  // Category: text between "JUDGES DETAILS PER SKATER" and "printed:"
+  const skaterIdx = text.indexOf('PER SKATER');
+  const printedIdx = text.indexOf('printed:');
+  if (skaterIdx > 0 && printedIdx > skaterIdx) {
+    category = text.substring(skaterIdx + 10, printedIdx).trim();
+  }
+
+  // Find all skater header positions.
+  // Pattern: rank(1-2 digits) FIRSTNAME LASTNAME club startnum total tes pcs ded
+  // Key insight: after the club name comes a 1-2 digit starting number, then 4 decimal scores.
+  // We anchor on: digit(s) space NAME(S_IN_CAPS) ... digit{1,2} space score.score score.score score.score score.score
+  // The name is UPPERCASE SURNAME so we look for: ^(\d{1,2}) ([A-ZÄÖÜ].+?) (\d{1,2}) (\d+\.\d{2}) (\d+\.\d{2}) (\d+\.\d{2}) (\d+\.\d{2})
+  // We find positions of each skater block by splitting on the "# Executed Elements" marker
+  // which reliably appears after each skater header.
+
+  const positions = [];
+  // Match: rank firstname LASTNAME club startingnum total tes pcs ded
+  // Observed: "1 Signe WATZEL Sport Club Charlottenburg e.V. 3 30.57 14.69 15.88 0.00"
+  // Strategy: find all occurrences of pattern: \b(\d{1,2}) ([A-ZÄÖÜa-zäöüß]+ [A-ZÄÖÜ][A-ZÄÖÜa-zäöüß]+) (.+?) (\d{1,2}) (\d+\.\d{2}) (\d+\.\d{2}) (\d+\.\d{2}) (\d+\.\d{2})
+  const headerRe = /(?:^|(?<=\.\d{2})\s*)(\d{1,2})\s+([A-ZÄÖÜa-zäöüßé]+\s+[A-ZÄÖÜ][A-ZÄÖÜa-zäöüßé]+(?:\s+[A-ZÄÖÜ][A-ZÄÖÜa-zäöüßé]+)?)\s+(.+?)\s+(\d{1,2})\s+(\d+\.\d{2})\s+(\d+\.\d{2})\s+(\d+\.\d{2})\s+(\d+\.\d{2})/g;
+
+  let m;
+  while ((m = headerRe.exec(text)) !== null) {
+    const rank = parseInt(m[1]);
+    if (rank < 1 || rank > 99) continue;
+    // Sanity: total score should be reasonable (5-300 pts)
+    const total = parseFloat(m[5]);
+    if (total < 1 || total > 400) continue;
+    // Avoid matching "Page X / Y" lines or similar
+    if (m[3].match(/^(Page|printed|JUDGES|Rank|Score)/i)) continue;
+    positions.push({
+      idx: m.index,
+      rank,
+      name: m[2].trim(),
+      club: m[3].trim(),
+      total,
+      tes: parseFloat(m[6]),
+      pcs: parseFloat(m[7]),
+      ded: parseFloat(m[8]),
+    });
+  }
+
+  // Fallback: simpler approach if lookbehind fails (Safari doesn't support it)
+  if (positions.length === 0) {
+    const simpleRe = /\b(\d{1,2})\s+([A-ZÄÖÜa-zäöüßé]+\s+[A-ZÄÖÜ][A-ZÄÖÜa-zäöüßé]+(?:\s+[A-ZÄÖÜ][A-ZÄÖÜa-zäöüßé]+)?)\s+(.+?)\s+(\d{1,2})\s+(\d+\.\d{2})\s+(\d+\.\d{2})\s+(\d+\.\d{2})\s+(\d+\.\d{2})/g;
+    while ((m = simpleRe.exec(text)) !== null) {
+      const rank = parseInt(m[1]);
+      if (rank < 1 || rank > 99) continue;
+      const total = parseFloat(m[5]);
+      if (total < 1 || total > 400) continue;
+      if (m[3].match(/^(Page|printed|JUDGES|Rank|Score)/i)) continue;
+      // Avoid duplicates
+      if (!positions.find(p => p.rank === rank)) {
+        positions.push({ idx: m.index, rank, name: m[2].trim(), club: m[3].trim(), total, tes: parseFloat(m[6]), pcs: parseFloat(m[7]), ded: parseFloat(m[8]) });
+      }
+    }
+  }
+
+  if (positions.length === 0) throw new Error('No skaters found — please check this is a Judges Details PDF');
+
+  // Sort by position in text
+  positions.sort((a, b) => a.idx - b.idx);
+
+  // Remove duplicates (same rank)
+  const seen = new Set();
+  const unique = positions.filter(p => { if (seen.has(p.rank)) return false; seen.add(p.rank); return true; });
+
+  // Extract per-skater blocks
+  const skaters = [];
+  for (let i = 0; i < unique.length; i++) {
+    const start = unique[i].idx;
+    const end = i < unique.length - 1 ? unique[i+1].idx : text.length;
+    const block = text.substring(start, end);
+    const elements = parseElements(block);
+    const comp = parseComponents(block);
+    // Factor: appears as "Factor" followed by the multiplier value
+    const factorMatch = block.match(/Factor[\s\S]{0,20}?(\d+\.\d{2})/);
+    const factor = factorMatch ? parseFloat(factorMatch[1]) : 1.70;
+    skaters.push({ rank: unique[i].rank, name: unique[i].name, club: unique[i].club, total: unique[i].total, tes: unique[i].tes, pcs: unique[i].pcs, ded: unique[i].ded, factor, elements, comp });
+  }
+
+  skaters.sort((a, b) => a.rank - b.rank);
+  return { name: competitionName, category, skaters };
+}
+
+function parseElements(block) {
+  // The text is a single merged string. Element lines look like:
+  // "1 2S+2T 2.60 0.04 1 0 0 2.64"  (3 judges)
+  // "1 2Fq q 1.80 -0.36 -2 -2 -2 1.44"  (with flag info between code and bv)
+  // "8 CSp1* * 0.00 0.00 - - - 0.00"  (invalid, dashes for GOE)
+  // Key: element number (1-9 or 1-12), then element code, then base value XX.XX,
+  //      then GOE -X.XX or X.XX, then judge scores, then panel score XX.XX
+  // The "Info" column (flags like q, <<, <, e, !, F, *) appears between code and base value
+
+  const elements = [];
+
+  // Split the block at "# Executed Elements" to get just the elements portion
+  const execIdx = block.indexOf('# Executed Elements');
+  const compIdx = block.indexOf('Program Components');
+  const elBlock = execIdx >= 0
+    ? block.substring(execIdx, compIdx >= 0 ? compIdx : block.length)
+    : block.substring(0, compIdx >= 0 ? compIdx : block.length);
+
+  // Pattern: element_number  element_code  [info_flags]  base_value  goe  [judge_scores|-]  panel_score
+  // We look for sequences of: 1-2 digit number, then alphanumeric+symbols code, then decimal, then signed decimal, then panel decimal
+  // The tricky part: judge scores can be - (dashes) for invalid elements
+  // Approach: tokenise the element block and process token by token
+
+  // Extract all tokens (numbers, element codes, punctuation)
+  // Element codes contain: letters, digits, +, <, !, *, q, e, F (fall marker)
+  // A reliable anchor: element number followed by known element code patterns
+
+  // Regex: capture (elnum) (code_with_flags) (base_value) (goe) ... (panel_score)
+  // The info/flag column repeats symbols from the code, e.g. "2Fq q" or "2Lo< <" or "CSp1* *"
+  // So code + optional_repeated_flags + bv + goe + judges + score
+
+  // Build a flattened token list for element block only
+  const tokens = elBlock.match(/(-?\d+\.?\d*|[A-Za-zÄÖÜäöüß]+\d*[A-Za-z]*|[+<<!*qFeV]+|-)/g) || [];
+
+  let i = 0;
+  while (i < tokens.length) {
+    const elNum = parseInt(tokens[i]);
+    if (isNaN(elNum) || elNum < 1 || elNum > 20) { i++; continue; }
+
+    // Next token should be start of element code (letter or digit+letter)
+    if (i + 1 >= tokens.length) { i++; continue; }
+    const nextTok = tokens[i+1];
+    if (!nextTok.match(/^[A-Z0-9]/i)) { i++; continue; }
+
+    // Collect code tokens until we hit a decimal number (the base value)
+    let codeParts = [];
+    let j = i + 1;
+    while (j < tokens.length && !tokens[j].match(/^\d+\.\d+$/)) {
+      // Stop if we encounter a standalone number that's not a flag
+      if (tokens[j].match(/^-?\d+$/) && codeParts.length > 0) break;
+      codeParts.push(tokens[j]);
+      j++;
+      if (j - (i+1) > 8) break; // safety
+    }
+
+    if (j >= tokens.length) { i++; continue; }
+
+    const bv = parseFloat(tokens[j]);
+    if (isNaN(bv) || bv > 20) { i++; continue; }
+    j++;
+
+    // GOE: next decimal (possibly negative) or could be 0.00
+    if (j >= tokens.length) { i++; continue; }
+    const goe = parseFloat(tokens[j]);
+    if (isNaN(goe)) { i++; continue; }
+    j++;
+
+    // Skip judge scores (integers or dashes) until we hit next decimal
+    while (j < tokens.length && !tokens[j].match(/^\d+\.\d+$/)) {
+      j++;
+      if (j - i > 25) break;
+    }
+    if (j >= tokens.length) { i++; continue; }
+
+    const score = parseFloat(tokens[j]);
+    if (isNaN(score) || score > 20) { i++; continue; }
+    j++;
+
+    // Build the full code string (join code parts, removing duplicate flag info)
+    // e.g. ["2Fq","q"] → "2Fq", ["2Lo<","<"] → "2Lo<", ["CSp1*","*"] → "CSp1*"
+    // The info column just repeats the flags, so take first meaningful part
+    let code = codeParts[0] || '';
+    // Add combination/sequence suffix if present
+    for (let k = 1; k < codeParts.length; k++) {
+      const p = codeParts[k];
+      if (p === 'SEQ' || p === 'COMBO' || p === 'REP') { code += '+' + p; break; }
+      if (p.match(/^[A-Z0-9]/i) && !p.match(/^[qF<>!*eV]+$/i)) {
+        // It's another element in a combination (e.g. +2T, +1Lo)
+        if (codeParts[k-1] !== '+') code += '+';
+        code += p;
+      }
+    }
+    // Restore + signs that got tokenised away
+    // Reconstruct from original block instead
+    const codeRaw = extractRawCode(elBlock, elNum, bv);
+    const finalCode = codeRaw || code;
+
+    const flags = extractFlags(finalCode);
+    const desc = elementDescription(finalCode);
+    elements.push({ code: finalCode, desc, bv, goe, score, flags });
+
+    i = j;
+  }
+
+  return elements;
+}
+
+function extractRawCode(block, elNum, bv) {
+  // Find the element in the raw block by element number and base value
+  // Pattern: elNum space code [flags] space bv
+  // e.g. "1 2S+2T 2.60" or "2 2Fq q 1.80" or "8 CSp1* * 0.00"
+  const bvStr = bv.toFixed(2);
+  // Match: elNum, then capture everything up to bvStr
+  const re = new RegExp('\\b' + elNum + '\\s+([A-Z0-9][^\\d]{0,30}?)\\s+' + bvStr.replace('.', '\\.'));
+  const m = block.match(re);
+  if (m) {
+    // Clean up: remove trailing flag repetitions like "q q" → "q", "< <" → "<"
+    let code = m[1].trim();
+    // Remove duplicate flag suffixes (info column repeats them)
+    code = code.replace(/\s+[<<!qeF*V]+$/, '');
+    return code;
+  }
+  return null;
+}
+
+function extractFlags(code) {
+  const flags = [];
+  if (code.includes('F') && !code.includes('FC') && !code.match(/^F[A-Z]/)) flags.push('f');
+  else if (/ F/.test(code) || /F$/.test(code) || /Fx/.test(code)) flags.push('f');
+  if (/<</.test(code)) flags.push('dg');
+  else if (/</.test(code) && !code.includes('<<')) flags.push('ur');
+  if (/q\b/.test(code) || /q$/.test(code)) flags.push('q');
+  if (/\be\b/.test(code)) flags.push('e');
+  if (/!/.test(code)) flags.push('nc');
+  if (/\*/.test(code)) flags.push('inv');
+  if (/V\b/.test(code) || /V$/.test(code)) flags.push('V');
+  return [...new Set(flags)];
+}
+
+function elementDescription(code) {
+  const clean = code.replace(/[<<!qFeVF*x ]/g, '').trim();
+  const jumpNames = { T:'Toeloop', S:'Salchow', Lo:'Loop', F:'Flip', Lz:'Lutz', A:'Axel', Eu:'Euler' };
+  const spinNames = { USp:'Upright spin', LSp:'Layback spin', CSp:'Camel spin', SSp:'Sit spin', CoSp:'Combination spin', CCoSp:'Change-foot combination spin', CCSp:'Change-foot camel spin', CSSp:'Change-foot sit spin', FSSp:'Flying sit spin', FCoSp:'Flying combination spin', FCCoSp:'Flying change-foot combo spin' };
+  const stepNames = { StSq:'Step sequence', ChSq:'Choreographic sequence' };
+
+  // Spins
+  for (const [k,v] of Object.entries(spinNames)) {
+    if (clean.startsWith(k)) {
+      const lvlMatch = clean.match(/([A-Z]?\d*)$/);
+      const lvl = lvlMatch ? lvlMatch[1] : '';
+      const hasV = code.includes('V');
+      return v + (lvl && lvl!=='0' ? ', level '+lvl : ', basic level') + (hasV ? ' (reduced value)' : '');
+    }
+  }
+  // Steps
+  for (const [k,v] of Object.entries(stepNames)) {
+    if (clean.startsWith(k)) {
+      const lvlMatch = clean.match(/(\d+|B)$/i);
+      const lvl = lvlMatch ? lvlMatch[1] : '';
+      return v + (lvl==='B'||lvl==='' ? ', basic level' : ', level '+lvl);
+    }
+  }
+  // Jumps/combos
+  const jumpRe = /(\d)([A-Za-z]+)/g;
+  const parts = [];
+  let jm;
+  const src = clean.replace(/\+SEQ|\+COMBO|\+REP/g,'').replace(/Eu/g,'Eu');
+  const tempStr = src.replace(/Eu/g,'__Eu__');
+  const jumpRe2 = /(\d)([A-Z][a-z]*)/g;
+  while ((jm = jumpRe2.exec(tempStr)) !== null) {
+    const num = jm[1];
+    const type = jm[2].replace('__Eu__','Eu');
+    const n = {'1':'Single','2':'Double','3':'Triple','4':'Quad','5':'Quint'}[num]||num;
+    const name = jumpNames[type]||type;
+    parts.push(n+' '+name);
+  }
+  if (parts.length > 1) {
+    const isSeq = code.includes('SEQ');
+    return parts.join(' + ') + (isSeq ? ' sequence' : ' combination');
+  }
+  if (parts.length === 1) return parts[0];
+  return code;
+}
+
+function parseComponents(block) {
+  // Text is merged: "Composition 1.70 2.75 3.50 3.25 3.17Presentation 1.70 2.75 3.25 3.50 3.17Skating Skills..."
+  // Extract all decimals between keyword and next keyword; last one is the panel average.
+  function getScore(keyword, nextKeyword) {
+    const start = block.indexOf(keyword);
+    if (start < 0) return null;
+    const after = start + keyword.length;
+    const end = nextKeyword ? block.indexOf(nextKeyword, after) : block.indexOf('Judges Total', after);
+    const seg = (end > after) ? block.substring(after, end) : block.substring(after, after + 120);
+    const nums = seg.match(/\d+\.\d{2}/g);
+    return nums && nums.length ? parseFloat(nums[nums.length - 1]) : null;
+  }
+  return {
+    co: getScore('Composition', 'Presentation') || 3.00,
+    pr: getScore('Presentation', 'Skating Skills') || 3.00,
+    ss: getScore('Skating Skills', 'Judges Total') || 3.00,
+  };
+}
+
+// ─── FILE HANDLING ───────────────────────────────────────────────────────────
+function handleDrag(e) { e.preventDefault(); document.getElementById('upload-zone').classList.add('drag'); }
+function handleDragLeave(e) { document.getElementById('upload-zone').classList.remove('drag'); }
+function handleDrop(e) {
+  e.preventDefault();
+  document.getElementById('upload-zone').classList.remove('drag');
+  const file = e.dataTransfer.files[0];
+  if (file && file.type === 'application/pdf') processFile(file);
+}
+function handleFile(e) { const file = e.target.files[0]; if (file) processFile(file); }
+
+async function processFile(file) {
+  const ps = document.getElementById('parse-state');
+  ps.innerHTML = `<div class="parsing-state"><div class="spinner"></div><p>${t('parsing')}</p></div>`;
+  try {
+    const data = await parsePDF(file);
+    if (!data.skaters.length) throw new Error('No skaters parsed');
+    competitionData = data;
+    renderSelectScreen();
+    showScreen('screen-select');
+  } catch(err) {
+    console.error(err);
+    ps.innerHTML = `<div class="error-box">${t('parseError')}<br><small style="opacity:0.7;margin-top:4px;display:block">${err.message}</small></div>`;
+  }
+}
+
+// ─── SCREENS ─────────────────────────────────────────────────────────────────
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  window.scrollTo(0,0);
+}
+function goUpload() { showScreen('screen-upload'); }
+function goSelect() { showScreen('screen-select'); }
+
+function renderSelectScreen() {
+  const d = competitionData;
+  document.getElementById('comp-name').textContent = d.name;
+  document.getElementById('comp-cat').textContent = d.category;
+  document.getElementById('back-lbl').textContent = t('backUpload');
+  document.getElementById('back-lbl2').textContent = t('backSelect');
+
+  const maxTotal = Math.max(...d.skaters.map(s => s.total));
+  const list = document.getElementById('skater-list');
+  list.innerHTML = d.skaters.map((s,i) => {
+    const rc = s.rank===1?'r1':s.rank===2?'r2':s.rank===3?'r3':'rn';
+    return `<div class="skater-card" onclick="openReport(${i})">
+      <div style="min-width:0">
+        <div class="skater-name">${s.name}</div>
+        <div class="skater-club">${s.club}</div>
+      </div>
+      <div class="skater-right">
+        <div class="skater-score">
+          <div class="skater-score-val">${s.total.toFixed(2)}</div>
+          <div class="skater-score-lbl">${t('pts')}</div>
+        </div>
+        <div class="rank-badge ${rc}">${s.rank}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function openReport(idx) {
+  currentSkaterIdx = idx;
+  currentView = 'parent';
+  renderReport(idx);
+  showScreen('screen-report');
+}
+
+// ─── REPORT RENDERING ────────────────────────────────────────────────────────
+function renderReport(idx) {
+  const s = competitionData.skaters[idx];
+  const all = competitionData.skaters;
+  const maxTotal = Math.max(...all.map(x => x.total));
+  const above = all.find(x => x.rank === s.rank - 1);
+  const tesPct = Math.round((s.tes / s.total) * 100);
+  const pcsPct = 100 - tesPct;
+  const falls = s.elements.filter(e => e.flags.includes('f')).length;
+  const invalids = s.elements.filter(e => e.flags.includes('inv')).length;
+
+  // Insight
+  let insight = '';
+  const P = T[lang];
+  if (s.rank === 1) {
+    insight = P.insights.won;
+  } else if (falls >= 3) {
+    insight = P.insights.falls(falls);
+  } else if (invalids >= 2) {
+    insight = P.insights.invalid(invalids);
+  } else if (above) {
+    const gap = (above.total - s.total).toFixed(2);
+    const tesgap = (above.tes - s.tes).toFixed(2);
+    const rankStr = above.rank + (lang==='en' ? P.rankSuffix(above.rank) : P.rankSuffix(above.rank));
+    if (parseFloat(gap) < 2.0) insight = P.insights.gapSmall(gap, above.name, rankStr);
+    else insight = P.insights.gapLarge(gap, tesgap, above.name, rankStr);
+  }
+
+  const rc = s.rank===1?'r1':s.rank===2?'r2':s.rank===3?'r3':'rn';
+
+  document.getElementById('report-content').innerHTML = `
+    ${renderHeroCard(s, rc, tesPct, pcsPct, insight)}
+    ${renderElementsCard(s)}
+    ${renderComponentsCard(s)}
+    ${renderCompareCard(s, all, maxTotal)}
+    <div id="priorities-card">${renderPrioritiesCard(s)}</div>
+  `;
+}
+
+function renderHeroCard(s, rc, tesPct, pcsPct, insight) {
+  return `<div class="card">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">
+      <div class="rank-badge ${rc}" style="width:40px;height:40px;font-size:16px">${s.rank}</div>
+      <div>
+        <div style="font-size:17px">${s.name}</div>
+        <div style="font-size:12px;color:var(--text2);margin-top:2px">${s.club}</div>
+      </div>
+    </div>
+    <div class="score-hero">
+      <div class="metric"><div class="metric-lbl">${t('totalScore')}</div><div class="metric-val">${s.total.toFixed(2)}</div></div>
+      <div class="metric"><div class="metric-lbl">${t('technical')}</div><div class="metric-val">${s.tes.toFixed(2)}</div></div>
+      <div class="metric"><div class="metric-lbl">${t('artistic')}</div><div class="metric-val">${s.pcs.toFixed(2)}</div></div>
+    </div>
+    <div style="font-size:12px;color:var(--text2);margin-bottom:5px;font-family:'Helvetica Neue',Arial,sans-serif">${t('twoPartNote')}</div>
+    <div class="split-bar">
+      <div style="width:${tesPct}%;background:#1d6fa4"></div>
+      <div style="width:${pcsPct}%;background:#4aaa6a"></div>
+    </div>
+    <div class="split-legend">
+      <span><span class="split-dot" style="background:#1d6fa4"></span>${t('technical')} ${tesPct}% — ${s.tes.toFixed(2)}</span>
+      <span><span class="split-dot" style="background:#4aaa6a"></span>${t('artistic')} ${pcsPct}% — ${s.pcs.toFixed(2)}</span>
+    </div>
+    ${insight ? `<div class="insight-box">${insight}</div>` : ''}
+  </div>`;
+}
+
+function renderElementsCard(s) {
+  const FD = T[lang].flags;
+  const rows = s.elements.map(el => {
+    let icCls = 'ic-ok', icT = '+';
+    if (el.flags.includes('inv')) { icCls='ic-zero'; icT='—'; }
+    else if (el.flags.includes('f')||el.flags.includes('dg')) { icCls='ic-bad'; icT='!'; }
+    else if (el.flags.some(f=>['ur','q','e','nc','V'].includes(f))||el.goe<-0.25) { icCls='ic-warn'; icT='~'; }
+    const goeStr = el.goe>0 ? `+${el.goe.toFixed(2)}` : el.goe.toFixed(2);
+    const goeCls = el.goe>0?'gp':el.goe<0?'gn':'gz';
+    const goeLabel = el.flags.includes('inv') ? t('zeropts') : el.goe===0 ? t('noChange') : goeStr+' '+t('quality');
+    const flagsHtml = el.flags.filter(f=>FD[f]).map(f => {
+      const fd = FD[f];
+      const pc = {f:'fp-f',dg:'fp-dg',ur:'fp-ur',q:'fp-q',e:'fp-e',nc:'fp-nc',inv:'fp-inv',V:'fp-V'}[f]||'fp-nc';
+      return `<div class="flag-row"><span class="flag-pill ${pc}">${fd.pill}</span><span class="flag-text">${fd.text}</span></div>`;
+    }).join('');
+    return `<div class="el-row">
+      <div class="el-top">
+        <div class="el-icon ${icCls}">${icT}</div>
+        <div style="flex:1;min-width:0">
+          <div class="el-name">${el.code}</div>
+          <div class="el-desc">${el.desc}</div>
+        </div>
+        <div class="el-right">
+          <div class="el-score">${el.score.toFixed(2)}</div>
+          <div class="el-goe ${goeCls}">${goeLabel}</div>
+        </div>
+      </div>
+      ${flagsHtml ? `<div class="flags-block">${flagsHtml}</div>` : ''}
+    </div>`;
+  }).join('');
+  return `<div class="card"><div class="card-title">${t('elements')}</div>
+    <div style="font-size:12px;color:var(--text2);margin-bottom:10px;font-family:'Helvetica Neue',Arial,sans-serif">${t('elSubtitle')}</div>
+    ${rows}</div>`;
+}
+
+function renderComponentsCard(s) {
+  const compInfo = [
+    { key:'co', label:t('compCo'), tip:t('compCoTip') },
+    { key:'pr', label:t('compPr'), tip:t('compPrTip') },
+    { key:'ss', label:t('compSs'), tip:t('compSsTip') },
+  ];
+  const rows = compInfo.map(ci => {
+    const val = s.comp[ci.key];
+    const tier = getTier(val);
+    const pct = Math.round((val/10)*100);
+    const tierDesc = t(`tierDescs.${tier.descKey}`);
+    return `<div class="comp-row-block">
+      <div class="comp-top-row">
+        <div class="comp-lbl">${ci.label}</div>
+        <span class="tier-pill ${tier.cls}">${tier.name}</span>
+        <div class="comp-score-num">${val.toFixed(2)}</div>
+      </div>
+      <div class="comp-bar-bg">
+        <div class="comp-bar-fill" style="width:${pct}%;background:${tier.color}"></div>
+        <div class="comp-mid"></div>
+      </div>
+      <div class="comp-desc">${tierDesc} — ${ci.tip}</div>
+    </div>`;
+  }).join('');
+
+  return `<div class="card">
+    <div class="card-title">${t('artisticScores')}</div>
+    <div class="context-note">${t('contextNote')}</div>
+    <div class="scale-strip">
+      <div style="flex:2;background:#f5b8b8"></div><div style="flex:2;background:#f09090"></div>
+      <div style="flex:2;background:#fce0b0"></div><div style="flex:2;background:#f5c842"></div>
+      <div style="flex:2;background:#b8dfa0"></div><div style="flex:2;background:#6abf72"></div>
+      <div style="flex:4;background:#f5a030"></div><div style="flex:2;background:#8878d8"></div>
+      <div style="flex:6;background:#5094c8"></div>
+    </div>
+    <div class="scale-labels"><span>${t('scale0')}</span><span>${t('scale5')}</span><span>${t('scale10')}</span></div>
+    <div class="scale-legend">
+      <div class="scale-legend-item"><div class="scale-dot" style="background:#f09090"></div>${t('tierPoor')}</div>
+      <div class="scale-legend-item"><div class="scale-dot" style="background:#fce0b0"></div>${t('tierWeak')}</div>
+      <div class="scale-legend-item"><div class="scale-dot" style="background:#b8dfa0"></div>${t('tierAvg')}</div>
+      <div class="scale-legend-item"><div class="scale-dot" style="background:#f5a030"></div>${t('tierGood')}</div>
+      <div class="scale-legend-item"><div class="scale-dot" style="background:#5094c8"></div>${t('tierExc')}</div>
+    </div>
+    <div style="font-size:12px;color:var(--text2);margin-bottom:12px;font-family:'Helvetica Neue',Arial,sans-serif">${t('artisticSubtitle')} ${s.factor} ${t('artisticSubtitle2')}</div>
+    ${rows}
+  </div>`;
+}
+
+function renderCompareCard(s, all, maxTotal) {
+  const rows = all.map(x => {
+    const pct = Math.round((x.total/maxTotal)*100);
+    const isYou = x.rank === s.rank;
+    return `<div class="compare-row">
+      <div class="cmp-lbl" style="${isYou?'color:var(--text);font-style:italic':''}">${x.rank}. ${x.name.split(' ')[0]}</div>
+      <div class="cmp-track"><div class="cmp-fill ${isYou?'cmp-you':'cmp-other'}" style="width:${pct}%">${isYou?`<span>${t('youLabel')}</span>`:''}</div></div>
+      <div class="cmp-val">${x.total.toFixed(2)}</div>
+    </div>`;
+  }).join('');
+  return `<div class="card"><div class="card-title">${t('compareTitle')}</div>
+    <div style="font-size:12px;color:var(--text2);margin-bottom:10px;font-family:'Helvetica Neue',Arial,sans-serif">${t('compareSubtitle')}</div>
+    ${rows}</div>`;
+}
+
+function generatePriorities(s) {
+  const P = T[lang].priorities;
+  const prios = [];
+
+  const inv = s.elements.filter(e => e.flags.includes('inv'));
+  if (inv.length) {
+    const names = inv.map(e=>e.code.replace(/\*/g,'')).join(' & ');
+    const pts = inv.reduce((a,e)=>a+e.bv,0).toFixed(2);
+    prios.push({ impact: 100*inv.length,
+      tP: P.invTitle(inv.length), bP: P.invBody(names),
+      tC: P.invTitleC(names),    bC: P.invBodyC(names, pts) });
+  }
+
+  const falls = s.elements.filter(e=>e.flags.includes('f'));
+  if (falls.length) {
+    const names = falls.map(e=>e.code.replace(/ F$/,'').replace(/F$/,'')).join(', ');
+    const loss = falls.reduce((a,e)=>a+Math.abs(e.goe),0).toFixed(2);
+    prios.push({ impact: 80*falls.length,
+      tP: P.fallTitle(falls.length), bP: P.fallBody(names),
+      tC: P.fallTitleC(names),       bC: P.fallBodyC(names, loss) });
+  }
+
+  const dg = s.elements.filter(e=>e.flags.includes('dg')&&!e.flags.includes('inv'));
+  if (dg.length) {
+    const names = dg.map(e=>e.code.replace(/[<F ]/g,'')).join(' & ');
+    prios.push({ impact: 70*dg.length,
+      tP: P.dgTitle(names), bP: P.dgBody(names),
+      tC: P.dgTitleC(names), bC: P.dgBodyC(names) });
+  }
+
+  const ur = s.elements.filter(e=>e.flags.includes('ur')&&!e.flags.includes('dg')&&!e.flags.includes('inv'));
+  if (ur.length) {
+    const names = ur.map(e=>e.code.replace(/[< F]/g,'')).join(' & ');
+    const loss = ur.reduce((a,e)=>a+Math.abs(e.goe),0).toFixed(2);
+    prios.push({ impact: 50*ur.length,
+      tP: P.urTitle(names), bP: P.urBody(names),
+      tC: P.urTitleC(names), bC: P.urBodyC(names, loss) });
+  }
+
+  const edge = s.elements.filter(e=>e.flags.includes('e'));
+  if (edge.length) {
+    const names = edge.map(e=>e.code).join(' & ');
+    const loss = edge.reduce((a,e)=>a+Math.abs(e.goe),0).toFixed(2);
+    prios.push({ impact: 40,
+      tP: P.edgeTitle(names), bP: P.edgeBody(names),
+      tC: P.edgeTitleC(names), bC: P.edgeBodyC(names, loss) });
+  }
+
+  const q = s.elements.filter(e=>e.flags.includes('q')&&!e.flags.includes('f'));
+  if (q.length) {
+    const names = q.map(e=>e.code.replace(/q/g,'')).join(' & ');
+    const loss = q.reduce((a,e)=>a+Math.abs(e.goe),0).toFixed(2);
+    prios.push({ impact: 30*q.length,
+      tP: P.qTitle(names), bP: P.qBody(names),
+      tC: P.qTitleC(names), bC: P.qBodyC(names, loss) });
+  }
+
+  const rev = s.elements.filter(e=>e.flags.includes('V'));
+  if (rev.length) {
+    const names = rev.map(e=>e.code.replace(/V$/,'')).join(' & ');
+    prios.push({ impact: 25*rev.length,
+      tP: P.revTitle(names), bP: P.revBody(names),
+      tC: P.revTitleC(names), bC: P.revBodyC(names) });
+  }
+
+  const compVals = [s.comp.co, s.comp.pr, s.comp.ss];
+  const minComp = Math.min(...compVals);
+  if (minComp < 2.5 && compVals.reduce((a,b)=>a+b,0)/3 < 3.0) {
+    prios.push({ impact: 35,
+      tP: P.compTitle,  bP: P.compBody,
+      tC: P.compTitleC('', minComp.toFixed(2)), bC: P.compBodyC });
+  }
+
+  prios.sort((a,b)=>b.impact-a.impact);
+  return prios.slice(0,3);
+}
+
+function renderPrioritiesCard(s) {
+  const prios = generatePriorities(s);
+  const numCls = ['pn1','pn2','pn3'];
+  const items = prios.map((p,i) => {
+    const title = currentView==='parent' ? p.tP : p.tC;
+    const body  = currentView==='parent' ? p.bP : p.bC;
+    return `<div class="priority-item">
+      <div class="pnum ${numCls[i]}">${i+1}</div>
+      <div><div class="p-title">${title}</div><div class="p-body">${body}</div></div>
+    </div>`;
+  }).join('');
+
+  return `<div class="card">
+    <div class="card-title">${t('focusTitle')}</div>
+    <div class="view-toggle">
+      <button class="vt-btn ${currentView==='parent'?'active':''}" onclick="switchView('parent')">${t('forParents')}</button>
+      <button class="vt-btn ${currentView==='coach'?'active':''}" onclick="switchView('coach')">${t('forCoaches')}</button>
+    </div>
+    <div style="font-size:12px;color:var(--text2);margin-bottom:10px;font-family:'Helvetica Neue',Arial,sans-serif">${t('focusSubtitle')}</div>
+    ${items}
+  </div>`;
+}
+
+function switchView(view) {
+  currentView = view;
+  const s = competitionData.skaters[currentSkaterIdx];
+  document.getElementById('priorities-card').innerHTML = renderPrioritiesCard(s);
+}
+</script>
+</body>
+</html>
